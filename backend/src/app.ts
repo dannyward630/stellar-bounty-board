@@ -1,16 +1,18 @@
 import cors from 'cors';
 import express, { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'node:crypto';
+import pinoHttp from 'pino-http';
 import swaggerUi from 'swagger-ui-express';
 
+import { buildCorsOptions } from './middleware/corsOptions';
 import { generateOpenApiDocument } from './docs/openapi';
 import { getMetrics, httpRequestDuration } from './metrics';
+import { runDeepHealthCheck } from './services/deepHealth';
 
 import {
   createBounty,
   disputeBounty,
   extendDeadline,
-  updateBountyNotes,
   listBountyAuditLogs,
   listAllAuditLogs,
   listBounties,
@@ -30,8 +32,6 @@ import {
   aggregatedMetrics,
 } from './services/bountyStore';
 
-import { listOpenIssues } from './services/openIssues';
-
 import {
   bountyIdSchema,
   createBountySchema,
@@ -41,6 +41,7 @@ import {
   reserveBountySchema,
   submitBountySchema,
   updateNotesSchema,
+  zodErrorMessage,
 } from './validation/schemas';
 import { validateBody } from './middleware/validateBody';
 import { isValidStellarAddress } from './utils';
@@ -60,6 +61,7 @@ import { logger } from './logger';
 import { createAdminApiKeyAuthMiddleware } from './middleware/adminAuth';
 import { handleGitHubPrEvent } from './webhooks/githubPrHandler';
 import { draining } from './shutdown';
+import { getOpenIssuesStatus, listOpenIssues } from './services/openIssues';
 
 
 const INCOMING_REQUEST_ID = /^[a-zA-Z0-9-]{1,128}$/;
@@ -201,6 +203,26 @@ function parsePaginationValue(
   return parsed;
 }
 
+function parseAmountFilter(raw: unknown, field: string): number | undefined {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`${field} must be a number.`);
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${field} must be a number.`);
+  }
+
+  return parsed;
+}
+
 function jsonError(res: Response, req: Request, statusCode: number, message: string): void {
   res.status(statusCode).json({ error: message, requestId: req.requestId });
 }
@@ -329,6 +351,8 @@ app.get('/api/bounties/by-issue', (req: Request, res: Response) => {
 app.get('/api/bounties', async (req: Request, res: Response) => {
   try {
     const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+    const minAmount = parseAmountFilter(req.query.minAmount, 'minAmount');
+    const maxAmount = parseAmountFilter(req.query.maxAmount, 'maxAmount');
     const contributor =
       typeof req.query.contributor === 'string' && req.query.contributor.trim()
         ? req.query.contributor.trim()
@@ -378,8 +402,14 @@ app.get('/api/bounties', async (req: Request, res: Response) => {
       throw new Error('order must be one of: asc, desc');
     }
 
+    if (minAmount !== undefined && maxAmount !== undefined && minAmount > maxAmount) {
+      throw new Error('minAmount must be less than or equal to maxAmount.');
+    }
+
     const all = await listBountiesCached({
       q,
+      minAmount,
+      maxAmount,
       contributor,
       maintainer,
       status: status as never,
@@ -746,9 +776,11 @@ app.post(
   }
 );
 
-app.get('/api/open-issues', async (_req: Request, res: Response) => {
+app.get('/api/open-issues', async (req: Request, res: Response) => {
   try {
-
+    res.json({ data: await listOpenIssues(), status: getOpenIssuesStatus() });
+  } catch (error) {
+    sendError(res, req, error);
   }
 });
 

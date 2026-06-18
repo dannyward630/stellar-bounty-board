@@ -39,6 +39,18 @@ async function getApp() {
   return app;
 }
 
+async function createBounty(
+  app: Awaited<ReturnType<typeof getApp>>,
+  overrides: Partial<typeof validCreateBody> = {},
+) {
+  const response = await request(app)
+    .post("/api/bounties")
+    .send({ ...validCreateBody, ...overrides })
+    .expect(201);
+
+  return response.body.data;
+}
+
 describe("API — health and listing", () => {
   it("GET /api/health returns ok", async () => {
     const app = await getApp();
@@ -66,20 +78,20 @@ describe("API — bounty list deadline filters", () => {
     const createRes = await request(app).post("/api/bounties").send(validCreateBody).expect(201);
     const bounty = createRes.body.data;
 
-    const farFuture = new Date();
-    farFuture.setDate(farFuture.getDate() + 40);
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
+    const afterDeadline = new Date();
+    afterDeadline.setDate(afterDeadline.getDate() + validCreateBody.deadlineDays + 1);
+    const beforeDeadline = new Date();
+    beforeDeadline.setDate(beforeDeadline.getDate() - 1);
 
     const beforeRes = await request(app)
       .get("/api/bounties")
-      .query({ deadlineBefore: farFuture.toISOString() })
+      .query({ deadlineBefore: afterDeadline.toISOString() })
       .expect(200);
     expect(beforeRes.body.data.some((b: any) => b.id === bounty.id)).toBe(true);
 
     const afterRes = await request(app)
       .get("/api/bounties")
-      .query({ deadlineAfter: yesterday.toISOString() })
+      .query({ deadlineAfter: beforeDeadline.toISOString() })
       .expect(200);
     expect(afterRes.body.data.some((b: any) => b.id === bounty.id)).toBe(true);
   });
@@ -382,6 +394,101 @@ describe("API — bounty lifecycle routes", () => {
 
     const listRes = await request(app).get("/api/bounties").expect(200);
     expect(listRes.body.data.some((b: { id: string }) => b.id === id)).toBe(true);
+  });
+
+  it("GET /api/bounties filters by minAmount", async () => {
+    const app = await getApp();
+    await createBounty(app, { issueNumber: 101, title: "Small filter bounty", amount: 50 });
+    await createBounty(app, { issueNumber: 102, title: "Medium filter bounty", amount: 150 });
+    await createBounty(app, { issueNumber: 103, title: "Large filter bounty", amount: 750 });
+
+    const res = await request(app).get("/api/bounties").query({ minAmount: 100 }).expect(200);
+    const amounts = res.body.data.map((bounty: { amount: number }) => bounty.amount);
+
+    expect(amounts).toHaveLength(2);
+    expect(amounts.every((amount: number) => amount >= 100)).toBe(true);
+    expect(amounts).toEqual(expect.arrayContaining([150, 750]));
+  });
+
+  it("GET /api/bounties filters by maxAmount", async () => {
+    const app = await getApp();
+    await createBounty(app, { issueNumber: 111, title: "Small cap bounty", amount: 50 });
+    await createBounty(app, { issueNumber: 112, title: "Medium cap bounty", amount: 150 });
+    await createBounty(app, { issueNumber: 113, title: "Large cap bounty", amount: 750 });
+
+    const res = await request(app).get("/api/bounties").query({ maxAmount: 500 }).expect(200);
+    const amounts = res.body.data.map((bounty: { amount: number }) => bounty.amount);
+
+    expect(amounts).toHaveLength(2);
+    expect(amounts.every((amount: number) => amount <= 500)).toBe(true);
+    expect(amounts).toEqual(expect.arrayContaining([50, 150]));
+  });
+
+  it("GET /api/bounties combines minAmount and maxAmount filters", async () => {
+    const app = await getApp();
+    await createBounty(app, { issueNumber: 121, title: "Small range bounty", amount: 50 });
+    await createBounty(app, { issueNumber: 122, title: "Medium range bounty", amount: 150 });
+    await createBounty(app, { issueNumber: 123, title: "Large range bounty", amount: 750 });
+
+    const res = await request(app)
+      .get("/api/bounties")
+      .query({ minAmount: 100, maxAmount: 500 })
+      .expect(200);
+    const amounts = res.body.data.map((bounty: { amount: number }) => bounty.amount);
+
+    expect(amounts).toEqual([150]);
+  });
+
+  it("GET /api/bounties combines amount range with search filter", async () => {
+    const app = await getApp();
+    await createBounty(app, {
+      issueNumber: 131,
+      title: "Dashboard search match",
+      summary: "Build the dashboard search result card with clear validation.",
+      amount: 150,
+    });
+    await createBounty(app, {
+      issueNumber: 132,
+      title: "Dashboard high value",
+      summary: "Build the dashboard high value result card with clear validation.",
+      amount: 750,
+    });
+    await createBounty(app, {
+      issueNumber: 133,
+      title: "Other range match",
+      summary: "Build the unrelated range result card with clear validation.",
+      amount: 150,
+    });
+
+    const res = await request(app)
+      .get("/api/bounties")
+      .query({ q: "dashboard", minAmount: 100, maxAmount: 500 })
+      .expect(200);
+
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe("Dashboard search match");
+    expect(res.body.data[0].amount).toBe(150);
+  });
+
+  it("GET /api/bounties rejects non-numeric amount filters", async () => {
+    const app = await getApp();
+
+    const minRes = await request(app).get("/api/bounties").query({ minAmount: "many" }).expect(400);
+    expect(minRes.body.error).toMatch(/minAmount must be a number/i);
+
+    const maxRes = await request(app).get("/api/bounties").query({ maxAmount: "few" }).expect(400);
+    expect(maxRes.body.error).toMatch(/maxAmount must be a number/i);
+  });
+
+  it("GET /api/bounties rejects an inverted amount range", async () => {
+    const app = await getApp();
+
+    const res = await request(app)
+      .get("/api/bounties")
+      .query({ minAmount: 500, maxAmount: 100 })
+      .expect(400);
+
+    expect(res.body.error).toMatch(/minAmount must be less than or equal to maxAmount/i);
   });
 
   it("POST create with invalid body returns 400", async () => {

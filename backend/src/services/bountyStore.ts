@@ -7,7 +7,6 @@ import {
 } from "./notificationService";
 import { logStructured } from "../logger";
 import { getCache, type CacheAdapter } from "./cache";
- feat/concurrency-file-locking
 import { bountiesCreatedTotal, bountiesReleasedTotal } from "../metrics";
 import { validateGithubPrUrlForRepo } from "../validation/prUrl";
 
@@ -497,6 +496,10 @@ function persistUpdated(
 export interface ListBountiesOptions {
   /** Case-insensitive substring filter applied to title, summary, and labels. */
   q?: string;
+  /** Minimum bounty amount to include. */
+  minAmount?: number;
+  /** Maximum bounty amount to include. */
+  maxAmount?: number;
   /** Exact Stellar address filter applied to contributor. */
   contributor?: string;
   /** Exact Stellar address filter applied to maintainer. */
@@ -518,6 +521,8 @@ export interface ListBountiesOptions {
 export function listBounties(options: ListBountiesOptions = {}): BountyRecord[] {
   const records = normalizeRecords(readStore());
   const q = options.q?.trim().toLowerCase();
+  const minAmount = options.minAmount;
+  const maxAmount = options.maxAmount;
   const contributor = options.contributor?.trim();
   const maintainer = options.maintainer?.trim();
   const tokenSymbol = options.tokenSymbol?.trim().toUpperCase();
@@ -538,9 +543,21 @@ export function listBounties(options: ListBountiesOptions = {}): BountyRecord[] 
     const passesMaintainer = !maintainer || b.maintainer === maintainer;
     const passesTokenSymbol = !tokenSymbol || b.tokenSymbol.toUpperCase() === tokenSymbol;
     const passesStatus = !status || b.status === status;
+    const passesMinAmount = minAmount === undefined || b.amount >= minAmount;
+    const passesMaxAmount = maxAmount === undefined || b.amount <= maxAmount;
     const passesDeadlineBefore = deadlineBefore === undefined || b.deadlineAt < deadlineBefore;
     const passesDeadlineAfter = deadlineAfter === undefined || b.deadlineAt > deadlineAfter;
-    if (passesQ && passesContributor && passesMaintainer && passesTokenSymbol && passesStatus && passesDeadlineBefore && passesDeadlineAfter) {
+    if (
+      passesQ &&
+      passesContributor &&
+      passesMaintainer &&
+      passesTokenSymbol &&
+      passesStatus &&
+      passesMinAmount &&
+      passesMaxAmount &&
+      passesDeadlineBefore &&
+      passesDeadlineAfter
+    ) {
       result.push(b);
     }
   }
@@ -598,6 +615,8 @@ export async function listBountiesCached(
   }
 
   const q = options.q?.trim().toLowerCase();
+  const minAmount = options.minAmount;
+  const maxAmount = options.maxAmount;
   const contributor = options.contributor?.trim();
   const maintainer = options.maintainer?.trim();
   const tokenSymbol = options.tokenSymbol?.trim().toUpperCase();
@@ -615,9 +634,21 @@ export async function listBountiesCached(
     const passesMaintainer = !maintainer || b.maintainer === maintainer;
     const passesTokenSymbol = !tokenSymbol || b.tokenSymbol.toUpperCase() === tokenSymbol;
     const passesStatus = !status || b.status === status;
+    const passesMinAmount = minAmount === undefined || b.amount >= minAmount;
+    const passesMaxAmount = maxAmount === undefined || b.amount <= maxAmount;
     const passesDeadlineBefore = deadlineBefore === undefined || b.deadlineAt < deadlineBefore;
     const passesDeadlineAfter = deadlineAfter === undefined || b.deadlineAt > deadlineAfter;
-    return passesQ && passesContributor && passesMaintainer && passesTokenSymbol && passesStatus && passesDeadlineBefore && passesDeadlineAfter;
+    return (
+      passesQ &&
+      passesContributor &&
+      passesMaintainer &&
+      passesTokenSymbol &&
+      passesStatus &&
+      passesMinAmount &&
+      passesMaxAmount &&
+      passesDeadlineBefore &&
+      passesDeadlineAfter
+    );
   });
 
   sortBounties(filtered, options.sort ?? "createdAt", options.order ?? "desc");
@@ -1308,17 +1339,14 @@ export function listBountyAuditLogs(
   const data = filtered.slice(start, end);
 
 
-
+/**
+ * Retrieves the event history for a specific bounty.
+ */
 export function getBountyEvents(bountyId: string): BountyEvent[] {
   const records = listBounties();
   const bounty = findBounty(records, bountyId);
   return bounty.events || [];
 }
-
-
-  };
-}
- feat/concurrency-file-locking
 
 const GLOBAL_METRICS_CACHE_KEY = "stats:global";
 const GLOBAL_METRICS_TTL_SECONDS = 30;
@@ -1397,4 +1425,3 @@ export function getLeaderboard(limit = 10): LeaderboardEntry[] {
     )
     .slice(0, limit);
 }
- main
