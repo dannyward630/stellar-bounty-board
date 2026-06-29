@@ -290,7 +290,7 @@ describe("API — admin audit log endpoint", () => {
       .post(`/api/bounties/${bountyId}/submit`)
       .send({ 
         contributor: CONTRIBUTOR, 
-        submissionUrl: "https://github.com/owner/repo-name/pull/1" 
+        submissionUrl: "https://github.com/owner/repo-name/pull/1"
       })
       .expect(200);
     await request(app)
@@ -338,7 +338,7 @@ describe("API — admin audit log endpoint", () => {
       .post(`/api/bounties/${bountyId}/submit`)
       .send({ 
         contributor: CONTRIBUTOR, 
-        submissionUrl: "https://github.com/owner/repo-name/pull/1" 
+        submissionUrl: "https://github.com/owner/repo-name/pull/1"
       })
       .expect(200);
 
@@ -365,7 +365,7 @@ describe("API — admin audit log endpoint", () => {
       .post(`/api/bounties/${bountyId}/submit`)
       .send({ 
         contributor: CONTRIBUTOR, 
-        submissionUrl: "https://github.com/owner/repo-name/pull/1" 
+        submissionUrl: "https://github.com/owner/repo-name/pull/1"
       })
       .expect(200);
 
