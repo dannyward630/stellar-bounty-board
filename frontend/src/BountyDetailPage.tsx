@@ -1,14 +1,13 @@
-import { ReactNode, useState, useCallback, useEffect, useRef } from "react";
-import { ArrowUpRight, Check, Clock, Copy, Share2, Printer } from "lucide-react";
-import { Bounty, BountyEvent, BountyStatus } from "./types";
-import BountyCountdown from "./BountyCountdown";
-import UsdAmount from "./UsdAmount";
-import { updateSocialMetaTags } from "./metaTags";
-import CopyIcon from "./CopyIcons";
-import { extendDeadline } from "./api";
+import { ReactNode, useState, useEffect, useRef } from 'react';
+import { ArrowUpRight, Clock, Printer } from 'lucide-react';
+import { Bounty, BountyEvent, BountyStatus } from './types';
+import BountyCountdown from './BountyCountdown';
+import UsdAmount from './UsdAmount';
+import { updateSocialMetaTags } from './metaTags';
+import CopyIcon from './CopyIcons';
+import { extendDeadline } from './api';
 
-
-type BountyAction = "reserve" | "submit" | "release" | "refund";
+type BountyAction = 'reserve' | 'submit' | 'release' | 'refund';
 
 type Props = {
   bounty: Bounty | null;
@@ -17,13 +16,10 @@ type Props = {
   owner: string;
   avatarUrl: string;
   statusCopy: Record<BountyStatus, { label: string; description: string }>;
-  actionCopy: Record<
-    BountyStatus,
-    Array<{ action: BountyAction; label: string; title: string }>
-  >;
+  actionCopy: Record<BountyStatus, Array<{ action: BountyAction; label: string; title: string }>>;
   renderActionButton: (
     bounty: Bounty,
-    action: { action: BountyAction; label: string; title: string },
+    action: { action: BountyAction; label: string; title: string }
   ) => ReactNode;
   formatTimestamp: (value?: number) => string;
 };
@@ -31,22 +27,22 @@ type Props = {
 function useBountyStatusAnnouncement(
   bounty: Bounty | null,
   statusCopy: Record<BountyStatus, { label: string; description: string }>,
-  clearAfterMs = 3000,
+  clearAfterMs = 3000
 ) {
   const previousStatusRef = useRef<{ id: string; status: BountyStatus } | null>(null);
-  const [announcement, setAnnouncement] = useState("");
+  const [announcement, setAnnouncement] = useState('');
 
   useEffect(() => {
     if (!bounty) {
       previousStatusRef.current = null;
-      setAnnouncement("");
+      setAnnouncement('');
       return;
     }
 
     const previous = previousStatusRef.current;
     if (previous?.id === bounty.id && previous.status !== bounty.status) {
       setAnnouncement(
-        `Bounty #${bounty.issueNumber} status changed to ${statusCopy[bounty.status].label}`,
+        `Bounty #${bounty.issueNumber} status changed to ${statusCopy[bounty.status].label}`
       );
     }
 
@@ -57,7 +53,7 @@ function useBountyStatusAnnouncement(
     if (!announcement) return;
 
     const timeoutId = window.setTimeout(() => {
-      setAnnouncement("");
+      setAnnouncement('');
     }, clearAfterMs);
 
     return () => window.clearTimeout(timeoutId);
@@ -67,15 +63,21 @@ function useBountyStatusAnnouncement(
 }
 
 const EVENT_LABELS: Record<string, string> = {
-  created: "Bounty created",
-  reserved: "Bounty reserved",
-  submitted: "Work submitted",
-  released: "Payment released",
-  refunded: "Bounty refunded",
-  expired: "Bounty expired",
+  created: 'Bounty created',
+  reserved: 'Bounty reserved',
+  submitted: 'Work submitted',
+  released: 'Payment released',
+  refunded: 'Bounty refunded',
+  expired: 'Bounty expired',
 };
 
-function BountyTimeline({ events, formatTimestamp }: { events: BountyEvent[]; formatTimestamp: (v?: number) => string }) {
+function BountyTimeline({
+  events,
+  formatTimestamp,
+}: {
+  events: BountyEvent[];
+  formatTimestamp: (v?: number) => string;
+}) {
   if (!events || events.length === 0) return null;
 
   const sorted = [...events].sort((a, b) => a.timestamp - b.timestamp);
@@ -94,12 +96,13 @@ function BountyTimeline({ events, formatTimestamp }: { events: BountyEvent[]; fo
               <strong className="bounty-timeline__event">
                 {EVENT_LABELS[event.type] ?? event.type}
               </strong>
-              <time className="bounty-timeline__time" dateTime={new Date(event.timestamp * 1000).toISOString()}>
+              <time
+                className="bounty-timeline__time"
+                dateTime={new Date(event.timestamp * 1000).toISOString()}
+              >
                 {formatTimestamp(event.timestamp)}
               </time>
-              {event.actor && (
-                <span className="bounty-timeline__actor">by {event.actor}</span>
-              )}
+              {event.actor && <span className="bounty-timeline__actor">by {event.actor}</span>}
             </div>
           </li>
         ))}
@@ -119,7 +122,6 @@ export default function BountyDetailPage({
   renderActionButton,
   formatTimestamp,
 }: Props) {
-
   const statusAnnouncement = useBountyStatusAnnouncement(bounty, statusCopy);
 
   useEffect(() => {
@@ -131,24 +133,6 @@ export default function BountyDetailPage({
 
   function handlePrint() {
     window.print();
-  }
-
-  function handleShare() {
-    if (!bounty) return;
-    const permalink = `${window.location.origin}/bounties/${encodeURIComponent(bounty.id)}`;
-    navigator.clipboard.writeText(permalink).then(() => {
-      // Show brief confirmation
-      const button = document.querySelector('[aria-label="Share bounty"]') as HTMLButtonElement;
-      if (button) {
-        const originalText = button.innerHTML;
-        button.innerHTML = `<Share2 size={16} />Copied!`;
-        setTimeout(() => {
-          button.innerHTML = originalText;
-        }, 2000);
-      }
-    }).catch((err) => {
-      console.error("Failed to copy URL:", err);
-    });
   }
 
   return (
@@ -163,7 +147,7 @@ export default function BountyDetailPage({
         <div className="panel-header">
           <div>
             <span className="panel-kicker">Bounty</span>
-            <h2>{bounty ? bounty.title : "Bounty"}</h2>
+            <h2>{bounty ? bounty.title : 'Bounty'}</h2>
           </div>
           <div className="panel-header__actions">
             <button
@@ -177,12 +161,7 @@ export default function BountyDetailPage({
               <Printer size={16} />
               Print / Export PDF
             </button>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={onBack}
-              disabled={loading}
-            >
+            <button type="button" className="secondary-button" onClick={onBack} disabled={loading}>
               Back
             </button>
           </div>
@@ -196,12 +175,7 @@ export default function BountyDetailPage({
           <div className="bounty-detail__content">
             <div className="bounty-detail__hero">
               {avatarUrl && (
-                <img
-                  className="repo-avatar"
-                  src={avatarUrl}
-                  alt={owner}
-                  loading="lazy"
-                />
+                <img className="repo-avatar" src={avatarUrl} alt={owner} loading="lazy" />
               )}
               <div>
                 <span
@@ -214,7 +188,7 @@ export default function BountyDetailPage({
               </div>
               <div className="amount-chip">
                 {bounty.amount} {bounty.tokenSymbol}
-                {(bounty.tokenSymbol === "XLM" || bounty.tokenSymbol === "USDC") && (
+                {(bounty.tokenSymbol === 'XLM' || bounty.tokenSymbol === 'USDC') && (
                   <UsdAmount amount={bounty.amount} tokenSymbol={bounty.tokenSymbol} />
                 )}
               </div>
@@ -248,7 +222,7 @@ export default function BountyDetailPage({
               <div>
                 <span className="meta-label">Deadline</span>
                 <strong>
-                  {formatTimestamp(bounty.deadlineAt)}{" "}
+                  {formatTimestamp(bounty.deadlineAt)}{' '}
                   <BountyCountdown deadlineAt={bounty.deadlineAt} status={bounty.status} />
                 </strong>
               </div>
@@ -262,7 +236,7 @@ export default function BountyDetailPage({
               <div>
                 <span className="meta-label">Contributor</span>
                 <strong className="copy-row">
-                  {bounty.contributor ?? "Open"}
+                  {bounty.contributor ?? 'Open'}
                   {bounty.contributor && (
                     <CopyIcon text={bounty.contributor} label="contributor address" />
                   )}
@@ -314,10 +288,10 @@ export default function BountyDetailPage({
 
             {bounty.labels.length > 0 && (
               <div className="chip-row chip-row--spaced">
-                {bounty.labels.map((label: any) => (
+                {bounty.labels.map((label) => (
                   <span className="chip" key={label.name}>
-  {label.name}
-</span>
+                    {label.name}
+                  </span>
                 ))}
               </div>
             )}
@@ -340,20 +314,19 @@ export default function BountyDetailPage({
             )}
 
             <p className="status-helper">
-              <strong>{statusCopy[bounty.status].label}:</strong>{" "}
+              <strong>{statusCopy[bounty.status].label}:</strong>{' '}
               {statusCopy[bounty.status].description}
             </p>
 
             <div className="action-row action-row--detail">
               {(actionCopy[bounty.status] ?? []).map((action) =>
-                renderActionButton(bounty, action),
+                renderActionButton(bounty, action)
               )}
             </div>
 
-            {owner === bounty.maintainer &&
-              !["released", "refunded"].includes(bounty.status) && (
-                <ExtendDeadlineControl bounty={bounty} formatTimestamp={formatTimestamp} />
-              )}
+            {owner === bounty.maintainer && !['released', 'refunded'].includes(bounty.status) && (
+              <ExtendDeadlineControl bounty={bounty} formatTimestamp={formatTimestamp} />
+            )}
 
             {bounty.events && bounty.events.length > 0 && (
               <BountyTimeline events={bounty.events} formatTimestamp={formatTimestamp} />
@@ -377,7 +350,7 @@ export function ExtendDeadlineControl({
   bounty: Bounty;
   formatTimestamp: (value?: number) => string;
 }) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -392,21 +365,21 @@ export function ExtendDeadlineControl({
     setSuccess(null);
 
     if (!value) {
-      setError("Pick a new deadline date and time.");
+      setError('Pick a new deadline date and time.');
       return;
     }
 
     const newDeadline = Math.floor(new Date(value).getTime() / 1000);
     if (Number.isNaN(newDeadline)) {
-      setError("That is not a valid date.");
+      setError('That is not a valid date.');
       return;
     }
     if (newDeadline <= bounty.deadlineAt) {
-      setError("New deadline must be later than the current deadline.");
+      setError('New deadline must be later than the current deadline.');
       return;
     }
     if (newDeadline <= Math.floor(Date.now() / 1000)) {
-      setError("New deadline must be in the future.");
+      setError('New deadline must be in the future.');
       return;
     }
 
@@ -414,9 +387,9 @@ export function ExtendDeadlineControl({
     try {
       const updated = await extendDeadline(bounty.id, bounty.maintainer, newDeadline);
       setSuccess(`Deadline extended to ${formatTimestamp(updated.deadlineAt)}.`);
-      setValue("");
+      setValue('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to extend the deadline.");
+      setError(err instanceof Error ? err.message : 'Failed to extend the deadline.');
     } finally {
       setSubmitting(false);
     }
@@ -437,7 +410,7 @@ export function ExtendDeadlineControl({
           disabled={submitting}
         />
         <button type="submit" className="secondary-button" disabled={submitting || !value}>
-          {submitting ? "Extending…" : "Extend Deadline"}
+          {submitting ? 'Extending…' : 'Extend Deadline'}
         </button>
       </div>
       {error && (
@@ -457,7 +430,7 @@ export function ExtendDeadlineControl({
 /** Convert a millisecond epoch to a `datetime-local`-compatible local string. */
 function toDatetimeLocal(epochMs: number): string {
   const d = new Date(epochMs);
-  const pad = (n: number) => String(n).padStart(2, "0");
+  const pad = (n: number) => String(n).padStart(2, '0');
   return (
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
     `T${pad(d.getHours())}:${pad(d.getMinutes())}`

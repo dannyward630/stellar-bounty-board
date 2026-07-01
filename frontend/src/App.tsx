@@ -1347,12 +1347,7 @@ function App() {
               </label>
             </div>
 
-            <GitHubIssuePreviewCard
-              repo={form.repo}
-              issueNumber={form.issueNumber}
-              title={form.title}
-              labels={form.labels}
-            />
+            <GitHubIssuePreviewCard repo={form.repo} issueNumber={form.issueNumber} />
 
             <button className="primary-button" disabled={submitting}>
               {submitting ? 'Publishing...' : 'Publish bounty'}

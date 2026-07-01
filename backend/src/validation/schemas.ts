@@ -253,7 +253,7 @@ export const bountyRecordSchema = z
     amount: z.number().openapi({ example: 100 }),
     labels: z.array(z.string()).openapi({ example: ['bug', 'help wanted'] }),
     status: z
-      .enum(['open', 'reserved', 'submitted', 'released', 'refunded', 'expired'])
+      .enum(['open', 'reserved', 'submitted', 'released', 'refunded', 'expired', 'disputed'])
       .openapi({ example: 'open' }),
     createdAt: z
       .number()
@@ -268,6 +268,7 @@ export const bountyRecordSchema = z
       .string()
       .optional()
       .openapi({ example: '0'.repeat(64) }),
+    protocolFeeCollected: z.number().optional(),
     refundedAt: z.number().optional(),
     refundedTxHash: z
       .string()
@@ -356,7 +357,9 @@ export const bountyAuditLogListResponseSchema = z
 
 export const healthResponseSchema = z
   .object({
-
+    service: z.string(),
+    status: z.string(),
+    timestamp: z.string(),
   })
   .openapi('HealthResponse');
 

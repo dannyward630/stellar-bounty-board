@@ -778,6 +778,7 @@ app.post(
 
 app.get('/api/open-issues', async (req: Request, res: Response) => {
   try {
+    res.setHeader('Cache-Control', 'max-age=600');
     res.json({ data: await listOpenIssues(), status: getOpenIssuesStatus() });
   } catch (error) {
     sendError(res, req, error);

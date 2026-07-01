@@ -8,6 +8,7 @@ import {
 import { logStructured } from "../logger";
 import { getCache, type CacheAdapter } from "./cache";
 import { bountiesCreatedTotal, bountiesReleasedTotal } from "../metrics";
+import { resolveTokenAddress } from "../utils";
 import { validateGithubPrUrlForRepo } from "../validation/prUrl";
 
 
@@ -688,6 +689,8 @@ async function withStoreLock<T>(fn: () => T | Promise<T>): Promise<T> {
   }
 }
 
+const withGlobalLock = withStoreLock;
+
 export async function createBounty(
   input: CreateBountyInput,
 ): Promise<BountyRecord> {
@@ -799,7 +802,11 @@ export async function reserveBounty(
         contributor,
       },
     ).catch((err) =>
-      console.warn("[reserveBounty] Notification failed (non-blocking):", err),
+      logStructured("warn", "notification_failed", {
+        operation: "reserveBounty",
+        bountyId: id,
+        message: err instanceof Error ? err.message : String(err),
+      }),
     );
 
     return persisted;
@@ -881,7 +888,11 @@ export async function submitBounty(
         submissionUrl,
       },
     ).catch((err) =>
-      console.warn("[submitBounty] Notification failed (non-blocking):", err),
+      logStructured("warn", "notification_failed", {
+        operation: "submitBounty",
+        bountyId: id,
+        message: err instanceof Error ? err.message : String(err),
+      }),
     );
 
     return persisted;
@@ -1030,7 +1041,11 @@ export async function refundBounty(
           tokenSymbol: bounty.tokenSymbol,
         },
       ).catch((err) =>
-        console.warn("[refundBounty] Notification failed (non-blocking):", err),
+        logStructured("warn", "notification_failed", {
+          operation: "refundBounty",
+          bountyId: id,
+          message: err instanceof Error ? err.message : String(err),
+        }),
       );
     }
 
@@ -1301,11 +1316,19 @@ export interface AuditLogPage {
   data: BountyAuditLogRecord[];
   /** Pagination metadata. */
   pagination: {
+    /** Number of records requested. */
+    limit: number;
+    /** Zero-based offset into the filtered audit log records. */
+    offset: number;
     /** Total number of audit log records. */
     total: number;
-    /** Current page number (1-indexed). */
+    /** Whether another page is available after this slice. */
+    hasMore: boolean;
+    /** Offset for the next page, or null when no next page exists. */
+    nextOffset: number | null;
+    /** Current page number (1-indexed), derived from limit/offset. */
     page: number;
-    /** Number of records per page. */
+    /** Number of records per derived page. */
     pageSize: number;
     /** Total number of pages. */
     totalPages: number;
@@ -1322,9 +1345,9 @@ export interface AuditLogPage {
  */
 export function listBountyAuditLogs(
   bountyId: string,
-  page: number = 1,
-  pageSize: number = 20,
+  options: { limit?: number; offset?: number } = {},
 ): AuditLogPage {
+  const { limit = 20, offset = 0 } = options;
   const allLogs = readAuditStore();
   const filtered = allLogs.filter((log) => log.bountyId === bountyId);
 
@@ -1332,12 +1355,81 @@ export function listBountyAuditLogs(
   filtered.sort((a, b) => b.timestamp - a.timestamp);
 
   const total = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(Math.max(1, page), totalPages);
-  const start = (safePage - 1) * pageSize;
-  const end = start + pageSize;
-  const data = filtered.slice(start, end);
+  const data = filtered.slice(offset, offset + limit);
+  const hasMore = offset + limit < total;
 
+  return {
+    data,
+    pagination: {
+      limit,
+      offset,
+      total,
+      hasMore,
+      nextOffset: hasMore ? offset + limit : null,
+      page: Math.floor(offset / limit) + 1,
+      pageSize: limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
+}
+
+export interface ListAllAuditLogsOptions {
+  limit?: number;
+  offset?: number;
+  actor?: string;
+  transition?: string;
+  bountyId?: string;
+  fromStatus?: string;
+  toStatus?: string;
+}
+
+export function listAllAuditLogs(options: ListAllAuditLogsOptions = {}): AuditLogPage {
+  const {
+    limit = 50,
+    offset = 0,
+    actor,
+    transition,
+    bountyId,
+    fromStatus,
+    toStatus,
+  } = options;
+
+  let records = readAuditStore();
+
+  if (actor) {
+    records = records.filter((record) => record.actor === actor);
+  }
+  if (transition) {
+    records = records.filter((record) => record.transition === transition);
+  }
+  if (bountyId) {
+    records = records.filter((record) => record.bountyId === bountyId);
+  }
+  if (fromStatus) {
+    records = records.filter((record) => record.fromStatus === fromStatus);
+  }
+  if (toStatus) {
+    records = records.filter((record) => record.toStatus === toStatus);
+  }
+
+  const total = records.length;
+  const data = records.slice(offset, offset + limit);
+  const hasMore = offset + limit < total;
+
+  return {
+    data,
+    pagination: {
+      limit,
+      offset,
+      total,
+      hasMore,
+      nextOffset: hasMore ? offset + limit : null,
+      page: Math.floor(offset / limit) + 1,
+      pageSize: limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
+}
 
 /**
  * Retrieves the event history for a specific bounty.
@@ -1346,6 +1438,103 @@ export function getBountyEvents(bountyId: string): BountyEvent[] {
   const records = listBounties();
   const bounty = findBounty(records, bountyId);
   return bounty.events || [];
+}
+
+export interface MaintainerMetrics {
+  totalBounties: number;
+  openCount: number;
+  reservedCount: number;
+  submittedCount: number;
+  releasedCount: number;
+  refundedCount: number;
+  expiredCount: number;
+  totalFunded: number;
+  totalReleased: number;
+  averageRewardAmount: number;
+}
+
+export function getMaintainerMetrics(maintainer: string): MaintainerMetrics {
+  const bounties = listBounties().filter((bounty) => bounty.maintainer === maintainer);
+  const released = bounties.filter((bounty) => bounty.status === "released");
+  const totalFunded = bounties.reduce((sum, bounty) => sum + bounty.amount, 0);
+  const totalReleased = released.reduce((sum, bounty) => sum + bounty.amount, 0);
+
+  return {
+    totalBounties: bounties.length,
+    openCount: bounties.filter((bounty) => bounty.status === "open").length,
+    reservedCount: bounties.filter((bounty) => bounty.status === "reserved").length,
+    submittedCount: bounties.filter((bounty) => bounty.status === "submitted").length,
+    releasedCount: released.length,
+    refundedCount: bounties.filter((bounty) => bounty.status === "refunded").length,
+    expiredCount: bounties.filter((bounty) => bounty.status === "expired").length,
+    totalFunded,
+    totalReleased,
+    averageRewardAmount: bounties.length > 0 ? totalFunded / bounties.length : 0,
+  };
+}
+
+/**
+ * Ecosystem-wide aggregate statistics across all platform activity.
+ */
+export interface GlobalMetrics {
+  /** Total number of bounties created across the platform. */
+  totalBounties: number;
+  /** Total count of open bounties. */
+  openCount: number;
+  /** Total count of reserved bounties. */
+  reservedCount: number;
+  /** Total count of submitted bounties. */
+  submittedCount: number;
+  /** Total count of released bounties. */
+  releasedCount: number;
+  /** Total count of refunded bounties. */
+  refundedCount: number;
+  /** Total count of expired bounties. */
+  expiredCount: number;
+  /** Total amount of tokens funded across the platform. */
+  totalFunded: number;
+  /** Total amount of tokens released to contributors. */
+  totalReleased: number;
+  /** Total number of unique maintainer addresses. */
+  uniqueMaintainers: number;
+  /** Total number of unique contributor addresses. */
+  uniqueContributors: number;
+  /** Total protocol fees collected from released bounties. */
+  protocolFeesCollected: number;
+}
+
+/**
+ * Computes and returns global ecosystem-wide metrics for all bounties.
+ *
+ * @returns {GlobalMetrics} An object summarizing total counts, funding, and unique actor metrics.
+ */
+export function getGlobalMetrics(): GlobalMetrics {
+  const bounties = listBounties();
+  const released = bounties.filter((bounty) => bounty.status === "released");
+  const uniqueMaintainers = new Set(bounties.map((bounty) => bounty.maintainer)).size;
+  const uniqueContributors = new Set(
+    bounties
+      .filter((bounty) => bounty.contributor)
+      .map((bounty) => bounty.contributor as string),
+  ).size;
+
+  return {
+    totalBounties: bounties.length,
+    openCount: bounties.filter((bounty) => bounty.status === "open").length,
+    reservedCount: bounties.filter((bounty) => bounty.status === "reserved").length,
+    submittedCount: bounties.filter((bounty) => bounty.status === "submitted").length,
+    releasedCount: released.length,
+    refundedCount: bounties.filter((bounty) => bounty.status === "refunded").length,
+    expiredCount: bounties.filter((bounty) => bounty.status === "expired").length,
+    totalFunded: bounties.reduce((sum, bounty) => sum + bounty.amount, 0),
+    totalReleased: released.reduce((sum, bounty) => sum + bounty.amount, 0),
+    uniqueMaintainers,
+    uniqueContributors,
+    protocolFeesCollected: released.reduce(
+      (sum, bounty) => sum + (bounty.protocolFeeCollected ?? 0),
+      0,
+    ),
+  };
 }
 
 const GLOBAL_METRICS_CACHE_KEY = "stats:global";

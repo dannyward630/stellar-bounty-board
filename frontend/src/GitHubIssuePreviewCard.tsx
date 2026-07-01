@@ -1,7 +1,7 @@
-import { ArrowUpRight, FolderGit2 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { ArrowUpRight, FolderGit2 } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
 
-import { fetchGithubIssue, type GithubIssueData, type GithubIssueLabel } from "./githubIssueApi";
+import { fetchGithubIssue, type GithubIssueData, type GithubIssueLabel } from './githubIssueApi';
 
 type Props = {
   repo: string;
@@ -23,11 +23,11 @@ function useDarkText(hex: string): boolean {
 
 function formatIssueDate(isoDate: string): string {
   const date = new Date(isoDate);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
   });
 }
 
@@ -45,12 +45,12 @@ function IssueLabels({ labels }: { labels: GithubIssueLabel[] }) {
     <div className="chip-row" aria-label="Issue labels">
       {visibleLabels.map((label) => {
         const bg = `#${label.color}`;
-        const color = useDarkText(label.color) ? "#1a1a1a" : "#ffffff";
+        const color = useDarkText(label.color) ? '#1a1a1a' : '#ffffff';
         return (
           <span
             key={label.name}
             className="chip"
-            style={{ backgroundColor: bg, color, border: "none" }}
+            style={{ backgroundColor: bg, color, border: 'none' }}
           >
             {label.name}
           </span>
@@ -70,6 +70,7 @@ function GitHubIssuePreviewCardSkeleton() {
     <div
       className="github-issue-card github-issue-card--loading"
       data-testid="github-issue-preview-loading"
+      role="status"
       aria-busy="true"
       aria-label="Loading GitHub issue preview"
     >
@@ -97,12 +98,16 @@ type CardShellProps = {
 };
 
 function CardShell({ href, disabled, children }: CardShellProps) {
-  if (disabled || !href) {
+  if (disabled) {
     return (
       <div className="github-issue-card github-issue-card--disabled" aria-disabled="true">
         {children}
       </div>
     );
+  }
+
+  if (!href) {
+    return <div className="github-issue-card">{children}</div>;
   }
 
   return (
@@ -178,7 +183,7 @@ export default function GitHubIssuePreviewCard({ repo, issueNumber }: Props) {
 
   if (error) {
     return (
-      <CardShell href={href}>
+      <CardShell>
         <div className="github-issue-card__top">
           <div className="github-issue-card__heading">
             <FolderGit2 size={16} />
@@ -215,9 +220,7 @@ export default function GitHubIssuePreviewCard({ repo, issueNumber }: Props) {
           <span className="github-issue-card__repo">{normalizedRepo}</span>
           <span className="github-issue-card__number">#{issueNumber}</span>
           {issue ? (
-            <span
-              className={`github-issue-card__state github-issue-card__state--${issue.state}`}
-            >
+            <span className={`github-issue-card__state github-issue-card__state--${issue.state}`}>
               {issue.state}
             </span>
           ) : null}
@@ -227,7 +230,7 @@ export default function GitHubIssuePreviewCard({ repo, issueNumber }: Props) {
         </span>
       </div>
 
-      <strong className="github-issue-card__title">{issue?.title ?? "Issue title preview"}</strong>
+      <strong className="github-issue-card__title">{issue?.title ?? 'Issue title preview'}</strong>
 
       {issue ? (
         <p className="github-issue-card__opened">
